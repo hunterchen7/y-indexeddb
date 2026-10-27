@@ -118,3 +118,34 @@ export const testEarlyDestroy = async tc => {
   await new Promise((resolve) => setTimeout(resolve, 500))
   t.assert(!hasbeenSyced)
 }
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testClosedDatabaseKeepsDocWorking = async tc => {
+  await clearDocument(tc.testName)
+  const ydoc = new Y.Doc()
+  const persistence = new IndexeddbPersistence(tc.testName, ydoc)
+  await persistence.whenSynced
+  /**
+   * @type {Array<any>}
+   */
+  const errors = []
+  persistence.on('error', /** @param {any} err */ err => { errors.push(err) })
+  let updates = 0
+  ydoc.on('update', () => { updates++ })
+  const text = ydoc.getText('t')
+  /**
+   * @type {Array<string>}
+   */
+  const observed = []
+  text.observe(() => { observed.push(text.toString()) })
+  const db = /** @type {IDBDatabase} */ (persistence.db)
+  db.close()
+  text.insert(0, 'a')
+  text.insert(1, 'b')
+  t.compareArrays(observed, ['a', 'ab'])
+  t.assert(updates === 2)
+  t.assert(errors.length === 2)
+  persistence.destroy()
+}

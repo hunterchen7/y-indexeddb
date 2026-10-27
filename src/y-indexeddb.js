@@ -106,8 +106,16 @@ export class IndexeddbPersistence extends Observable {
      */
     this._storeUpdate = (update, origin) => {
       if (this.db && origin !== this) {
-        const [updatesStore] = idb.transact(/** @type {IDBDatabase} */ (this.db), [updatesStoreName])
-        idb.addAutoKey(updatesStore, update)
+        // Errors must not escape this update listener: a throw here aborts Yjs'
+        // transaction cleanup and the doc stops calling observers and emitting
+        // updates (e.g. when the browser closes or clears the database).
+        try {
+          const [updatesStore] = idb.transact(/** @type {IDBDatabase} */ (this.db), [updatesStoreName])
+          idb.addAutoKey(updatesStore, update)
+        } catch (err) {
+          this.emit('error', [err])
+          return
+        }
         if (++this._dbsize >= PREFERRED_TRIM_SIZE) {
           // debounce store call
           if (this._storeTimeoutId !== null) {
